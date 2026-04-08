@@ -61,10 +61,10 @@ db.sequelize
 app.use("/api/v1/auth", authRoute);
 app.use("/api/v1/customers", authMiddleware, customerRoute);
 
-app.use("/api/v1/users", userRoute);
-app.use("/api/v1/products", productRoute);
-app.use("/api/v1/orders", orderRoute);
-app.use("/api/v1/categories", categoryRoute);
+app.use("/api/v1/users", authMiddleware, userRoute);
+app.use("/api/v1/products", authMiddleware, productRoute);
+app.use("/api/v1/orders", authMiddleware, orderRoute);
+app.use("/api/v1/categories", authMiddleware, categoryRoute);
 
 app.post("/api/v1/orders", async (req, res) => {
   try {
@@ -161,13 +161,14 @@ app.post("/api/v1/products", async (req, res) => {
   // const price = req.body.price
   // const categroyId = req.body.categroyId
   try {
-    const { name, price, categoryId, isActive } = req.body;
+    const { name, price, categoryId, isActive , qty} = req.body;
 
     const createdProduct = await Product.create({
       name,
       price,
       categoryId,
       isActive,
+      qty
     });
     res.json({
       message: "Product created successfully",

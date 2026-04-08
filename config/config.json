@@ -1,8 +1,8 @@
 {
   "development": {
     "username": "postgres",
-    "password": "postgres",
-    "database": "sala-express-db-v2",
+    "password": "rat123",
+    "database": "sala-express",
     "host": "127.0.0.1",
     "dialect": "postgres"
   },

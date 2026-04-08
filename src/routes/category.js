@@ -66,8 +66,8 @@ router.get("", async (req, res) => {
 
   const categories = await Category.findAll({
     where: whereCondition,
-    include: [
-      {
+      include: [
+        {
         model: Product,
         as: "products",
       },
@@ -79,5 +79,12 @@ router.get("", async (req, res) => {
     data: categories,
   });
 });
+router.get("/list"  , async (req, res)   => {
+  const categories = await Category.findAll();
+   res.json ({
+    message: "Category successfully ",
+    data: categories, 
+   })
+})
 
 module.exports = router;
