@@ -75,7 +75,7 @@ app.put("/products/:id", (req, res) => {
   }
 
   products[productIndex] = {
-    ...products[productIndex],sdf
+    ...products[productIndex],sdf,
     name: name ?? products[productIndex].name,
     price: price ?? products[productIndex].price,
     qty: qty ?? products[productIndex].qty,

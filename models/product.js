@@ -15,12 +15,12 @@ module.exports = (sequelize, DataTypes) => {
         as: "category",
         
       });
-      Product.hasMany(models.ProductImage, {
+       Product.hasMany(models.ProductImage, {
         foreignKey: "productId",
-        as: "ProductsImages"
-      })
+        as: "productImages"
+      });
     }
-  }
+  } 
   Product.init(
     {
       name: DataTypes.STRING,

@@ -9,9 +9,26 @@ router.post("/register", async (req, res) => {
   try {
     const { firstName, lastName, email, password, gender } = req.body;
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    console.log("Hashed password", hashedPassword);
+    // ✅ Validate input
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).json({
+        message: "All fields are required",
+      });
+    }
 
+    // ✅ Check email already exists
+    const existingUser = await User.findOne({ where: { email } });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: "Email already exists",
+      });
+    }
+
+    // ✅ Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // ✅ Create user
     const user = await User.create({
       firstName,
       lastName,
@@ -20,12 +37,20 @@ router.post("/register", async (req, res) => {
       gender,
     });
 
-    res.json({
-      message: "User register successfully",
-      data: user,
+    // ✅ Remove password from response
+    const userData = user.toJSON();
+    delete userData.password;
+
+    // ✅ Send response
+    return res.status(201).json({
+      message: "User registered successfully",
+      data: userData,
     });
   } catch (error) {
     console.log("ERROR:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
   }
 });
 
@@ -33,19 +58,21 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check email in db
+    // Check email
     const user = await User.findOne({ where: { email } });
+
     if (!user) {
-      res.json({
+      return res.status(404).json({
         message: `User email=${email} not found`,
       });
     }
 
     // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
+
     if (!isMatch) {
-      res.json({
-        message: `Invalid password`,
+      return res.status(400).json({
+        message: "Invalid password",
       });
     }
 
@@ -59,12 +86,15 @@ router.post("/login", async (req, res) => {
       "sala-express",
     );
 
-    res.json({
+    return res.json({
       message: "User logged in successfully",
       data: token,
     });
   } catch (error) {
     console.log("ERROR:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
   }
 });
 
