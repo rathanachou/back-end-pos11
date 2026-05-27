@@ -1,177 +1,190 @@
-const app = require("express");
-const { Payment, Customer, Order, OrderDetail } = require("../../models");
-const { Op } = require("sequelize");
-const axios = require("axios");
+const express = require("express");
+const router = express.Router();
 const {
-
+  generateIndividualKHQR,
+  generateMerchantKHQR,
+  verifyKHQR,
+  decodeKHQR,
+  generateDeepLink,
 } = require("../utils/payway");
-const { buildPurchaseHash } = require("../utils/payway");
-const { encodeBase64 } = require("../utils/payway");
-const { getReqTime , buildCheckTransactionHash } = require("../utils/payway");
 
-const router = app.Router();
-
-// Create payment
-router.post("/:orderId", async (req, res) => {
-  console.log("FONTEND_URL", process.env.FRONTEND_URL);
-  const { orderId } = req.params;
+// ─── POST /api/payment/khqr/individual ───────────────────────────────────────
+// Generate a KHQR for an individual (personal Bakong account)
+//
+// Body:
+//   bakongAccountID*  string   e.g. "sopheakm@aclb"
+//   merchantName*     string   e.g. "Sopheak Mean"
+//   merchantCity      string   default "PHNOM PENH"
+//   currency          string   "usd" | "khr"   default "usd"
+//   amount            number   e.g. 12.50
+//   billNumber        string   e.g. "INV-0001"
+//   mobileNumber      string   e.g. "85512345678"
+//   storeLabel        string   e.g. "Main Branch"
+//   terminalLabel     string   e.g. "POS-01"
+//   purposeOfTransaction string
+//   merchantCategoryCode string default "5999"
+//   expiryMinutes     number   default 60
+router.post("/khqr/individual", async (req, res) => {
   try {
-    // 1. Fetch order
-    const order = await Order.findByPk(orderId, {
-      include: [
-        { model: Customer, as: "customer" },
-        { model: OrderDetail, as: "orderDetails" },
-      ],
-    });
+    const { bakongAccountID, merchantName } = req.body;
 
-    if (!order) {
-      return res.status(404).json({
-        message: `Order id=${orderId} not found`,
+    if (!bakongAccountID || !merchantName) {
+      return res.status(400).json({
+        success: false,
+        message: "bakongAccountID and merchantName are required",
       });
     }
 
-    console.log("Order", order);
+    const data = generateIndividualKHQR(req.body);
 
-    // 2. Prevent duplicate payment
-    let payment = await Payment.findOne({
-      where: { orderId, status: "PENDING" },
-    });
-
-    let paywayTranId;
-
-    // 3 create payment
-    paywayTranId = `ORD-${Date.now()}`;
-
-    payment = await Payment.create({
-      orderId: order.id,
-      paywayTranId: paywayTranId,
-      method: "ABA_PAYWAY",
-      status: "PENDING",
-      remark: "Pay via aba payway",
-      amount: order.total,
-    });
-
-    const req_time = getReqTime();
-    console.log("req_time", req_time);
-    let paywayItems = JSON.stringify(
-      order.orderDetails?.map((detail) => ({
-        name: detail.productName,
-        quantity: detail.qty,
-        price: Number(detail.productPrice),
-      })),
-    );
-
-    paywayItems = encodeBase64(paywayItems);
-    const encodedReturnUrl = `${process.env.FRONTEND_URL}/admin/pos`;
-
-    const paymentPayload = {
-      merchant_id: process.env.ABA_PAYWAY_MERCHANT_ID,
-      req_time,
-      tran_id: paywayTranId,
-      amount: Number(order.total).toFixed(2),
-      items: paywayItems,
-      shipping: "0.00",
-      firstname: order.customer?.name || "NA",
-      lastname: order.customer?.name || "NA",
-      email: order.customer?.email || "NA@gmail.com",
-      phone: order.customer?.phone || "000000000",
-      type: "purchase",
-      view_type: "popup",
-      payment_option: "abapay_khqr",
-      return_url: encodedReturnUrl,
-      cancel_url: `${process.env.FRONTEND_URL}/admin/pos`,
-       continue_success_url: `${process.env.FRONTEND_URL}/admin/pos?tranId=${paywayTranId}`,
-      currency: "USD",
-      payment_gate: 0,
-    };
-
-    const hash = buildPurchaseHash(paymentPayload);
-
-    return res.json({
-      message: "Payment created successfully",
-      data: {
-        payment,
-        payway: {
-          action: `${process.env.ABA_PAYWAY_BASE_URL}/api/payment-gateway/v1/payments/purchase`,
-          method: "POST",
-          target: "aba_webservice",
-          id: "aba_merchant_request",
-          fields: {
-            ...paymentPayload,
-            hash,
-          },
-        },
-      },
+    return res.status(200).json({
+      success: true,
+      data,
     });
   } catch (error) {
-    console.error("Error", error);
+    return res.status(422).json({
+      success: false,
+      message: error.message,
+      errorCode: error.errorCode ?? null,
+    });
   }
 });
 
-router.post("/:tranId/check", async (req, res) => {
+// ─── POST /api/payment/khqr/merchant ─────────────────────────────────────────
+// Generate a KHQR for a merchant (business account)
+//
+// Body:
+//   bakongAccountID*  string   e.g. "shop@aclb"
+//   merchantName*     string   e.g. "My Shop Ltd"
+//   merchantID*       string   e.g. "MER123456"
+//   acquiringBank*    string   e.g. "ACLEDA Bank"
+//   merchantCity      string   default "PHNOM PENH"
+//   currency          string   "usd" | "khr"   default "usd"
+//   amount            number
+//   billNumber        string
+//   mobileNumber      string
+//   storeLabel        string
+//   terminalLabel     string
+//   purposeOfTransaction string
+//   merchantCategoryCode string default "5999"
+//   expiryMinutes     number   default 60
+router.post("/khqr/merchant", async (req, res) => {
   try {
-    const { tranId } = req.params;
+    const { bakongAccountID, merchantName, merchantID, acquiringBank } = req.body;
 
-    const payment = await Payment.findOne({
-      where: { paywayTranId: tranId },
-    });
-
-    if (!payment) {
-      return res.status(404).json({
-        message: "Payment not found",
+    if (!bakongAccountID || !merchantName || !merchantID || !acquiringBank) {
+      return res.status(400).json({
+        success: false,
+        message: "bakongAccountID, merchantName, merchantID, and acquiringBank are required",
       });
     }
 
-    const req_time = getReqTime();
-    const merchant_id = process.env.ABA_PAYWAY_MERCHANT_ID;
-    const tran_id = payment.paywayTranId;
+    const data = generateMerchantKHQR(req.body);
 
-    const hash = buildCheckTransactionHash({ req_time, merchant_id, tran_id });
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return res.status(422).json({
+      success: false,
+      message: error.message,
+      errorCode: error.errorCode ?? null,
+    });
+  }
+});
 
-    const payload = {
-      req_time,
-      merchant_id,
-      tran_id,
-      hash,
-    };
-    const response = await axios.post(
-      `${process.env.ABA_PAYWAY_BASE_URL}/api/payment-gateway/v1/payments/check-transaction-2`,
-      payload,
-    );
-    console.log("response from ABA", response.data);
+// ─── POST /api/payment/khqr/verify ───────────────────────────────────────────
+// Verify a KHQR string (CRC validation)
+//
+// Body:
+//   qr*   string   the KHQR string to verify
+router.post("/khqr/verify", (req, res) => {
+  try {
+    const { qr } = req.body;
 
-    const abaData = response.data;
-    const statusCode = abaData?.status?.code;
-    const paymentStatusCode = abaData?.data?.payment_status_code;
-    const paymentStatus = abaData?.data?.payment_status;
-
-    if (statusCode == "00") {
-      if (paymentStatusCode === 0 && paymentStatus === "APPROVED") {
-        payment.status = "PAID";
-        payment.paidAt =abaData?.data?.transaction_date;
-      } else if (
-        paymentStatus === "DECLINED" ||
-        paymentStatus === "FAILED" ||
-        paymentStatusCode !== 0
-      ) {
-        payment.status = "FAILED";
-      } else {
-        payment.status = "PENDING";
-      }
-
-      payment.remark = JSON.stringify(abaData);
-      await payment.save();
+    if (!qr) {
+      return res.status(400).json({ success: false, message: "qr is required" });
     }
 
-    return res.json({
-      message: "Payment checked successfully",
-      data: {
-        payment: payment,
-        aba: abaData
-      }
-    })
+    const isValid = verifyKHQR(qr);
+
+    return res.status(200).json({
+      success: true,
+      data: { isValid },
+    });
   } catch (error) {
-    console.error("Error", error);
+    return res.status(422).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// ─── POST /api/payment/khqr/decode ───────────────────────────────────────────
+// Decode a KHQR string into its payment fields
+//
+// Body:
+//   qr*   string   the KHQR string to decode
+router.post("/khqr/decode", (req, res) => {
+  try {
+    const { qr } = req.body;
+
+    if (!qr) {
+      return res.status(400).json({ success: false, message: "qr is required" });
+    }
+
+    const data = decodeKHQR(qr);
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return res.status(422).json({
+      success: false,
+      message: error.message,
+      errorCode: error.errorCode ?? null,
+    });
+  }
+});
+
+// ─── POST /api/payment/khqr/deeplink ─────────────────────────────────────────
+// Generate a Bakong deeplink from a KHQR string
+//
+// Body:
+//   qr*                   string   KHQR string
+//   apiUrl*               string   NBC deeplink endpoint
+//   appName*              string   Your app name
+//   appIconUrl*           string   Your app icon URL
+//   appDeepLinkCallBack*  string   Your app deeplink callback URL
+router.post("/khqr/deeplink", async (req, res) => {
+  try {
+    const { qr, apiUrl, appName, appIconUrl, appDeepLinkCallBack } = req.body;
+
+    if (!qr || !apiUrl || !appName || !appIconUrl || !appDeepLinkCallBack) {
+      return res.status(400).json({
+        success: false,
+        message: "qr, apiUrl, appName, appIconUrl, and appDeepLinkCallBack are required",
+      });
+    }
+
+    const shortLink = await generateDeepLink(apiUrl, qr, {
+      appName,
+      appIconUrl,
+      appDeepLinkCallBack,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: { shortLink },
+    });
+  } catch (error) {
+    return res.status(422).json({
+      success: false,
+      message: error.message,
+      errorCode: error.errorCode ?? null,
+    });
   }
 });
 

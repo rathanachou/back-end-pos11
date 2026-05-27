@@ -3,40 +3,34 @@ const jwt = require("jsonwebtoken");
 const authMiddleware = (req, res, next) => {
   try {
     const authHeader = req.header("Authorization");
-
-    // ❌ No header
     if (!authHeader) {
-      return res.status(401).json({
-        message: "Access denied. Unauthorized",
-      });
+      return res.status(401).json({ message: "Access denied. Unauthorized" });
     }
-
-    // ❌ Format check
     const parts = authHeader.split(" ");
     if (parts.length !== 2) {
-      return res.status(401).json({
-        message: "Invalid token format",
-      });
+      return res.status(401).json({ message: "Invalid token format" });
     }
-
-    const token = parts[1];
-    console.log("Incoming Token", token);
-
-    // ❌ Verify token
+    const token   = parts[1];
     const decoded = jwt.verify(token, "sala-express");
-
-    // ✅ Save user info
-    req.user = decoded;
-
-    // ✅ Continue
+    req.user      = decoded;
     return next();
   } catch (error) {
-    console.log("ERROR: ", error);
-
-    return res.status(401).json({
-      message: "Invalid or expired token",
-    });
+    return res.status(401).json({ message: "Invalid or expired token" });
   }
 };
 
-module.exports = authMiddleware;
+const requireRole = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({
+        message: `Access denied. Required role: ${roles.join(" or ")}`,
+      });
+    }
+    return next();
+  };
+};
+
+module.exports = { authMiddleware, requireRole };

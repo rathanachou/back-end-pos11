@@ -1,66 +1,81 @@
-const app = require("express");
+const express = require("express");
+const bcrypt  = require("bcryptjs");
+const jwt     = require("jsonwebtoken");
 const { User } = require("../../models");
 
-const router = app.Router();
+const router = express.Router();
 
-router.put("/:id", async (req, res) => {
+// ─── Register ─────────────────────────────────────────────
+router.post("/register", async (req, res) => {
   try {
-    const id = req.params.id;
+    const { firstName, lastName, email, password, gender, role } = req.body;
 
-    const { firstName, lastName } = req.body;
-
-    let user = await User.findByPk(id);
-    console.log("User", user);
-
-    if (!user) {
-      res.json({
-        message: `User id=${id} not found`,
-      });
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).json({ message: "All fields are required" });
     }
 
-    user = await user.update({
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await User.create({
       firstName,
       lastName,
+      email,
+      password: hashedPassword,
+      gender,
+      role: role || "cashier", // default cashier
     });
-    console.log("Updated User", user);
 
-    res.json({
-      message: "User updated successfully",
-      data: user,
+    const userData = user.toJSON();
+    delete userData.password;
+
+    return res.status(201).json({
+      message: "User registered successfully",
+      data: userData,
     });
   } catch (error) {
-    console.log("Error: ", error)
+    console.error("Register error:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 });
 
-router.delete("/:id", async (req, res) => {
+// ─── Login ────────────────────────────────────────────────
+router.post("/login", async (req, res) => {
   try {
-    const id = req.params.id;
+    const { email, password } = req.body;
 
-
-    let user = await User.findByPk(id);
-    console.log("User", user);
-
+    const user = await User.findOne({ where: { email } });
     if (!user) {
-      res.json({
-        message: `User id=${id} not found`,
-      });
+      return res.status(404).json({ message: `User email=${email} not found` });
     }
 
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid password" });
+    }
 
-    await user.destroy()
-  //  await User.destroy({
-  //     where: {
-  //       id
-  //     }
-  //   })
+   
+    const token = jwt.sign(
+      {
+        id:       user.id,
+        email:    user.email,
+        fullName: user.firstName + " " + user.lastName,
+        role:     user.role, //  admin or cashier
+      },
+      "Levar-store"
+    );
 
-    res.json({
-      message: "User deleted successfully",
-      data: user,
+    return res.json({
+      message: "User logged in successfully",
+      data: token,
     });
   } catch (error) {
-    console.log("Error: ", error)
+    console.error("Login error:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 });
 

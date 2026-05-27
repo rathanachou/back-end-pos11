@@ -19,8 +19,14 @@ module.exports = (sequelize, DataTypes) => {
     email: DataTypes.STRING,
     password: DataTypes.STRING,
     gender: DataTypes.STRING,
-    isActive: DataTypes.BOOLEAN
-  }, {
+    isActive: DataTypes.BOOLEAN,
+     role: {
+        type:         DataTypes.ENUM("admin", "cashier"),
+        allowNull:    false,
+        defaultValue: "cashier", 
+      },
+  }, 
+  {
     sequelize,
     modelName: 'User',
   });

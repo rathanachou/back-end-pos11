@@ -9,14 +9,12 @@ router.post("/register", async (req, res) => {
   try {
     const { firstName, lastName, email, password, gender } = req.body;
 
-    // ✅ Validate input
     if (!firstName || !lastName || !email || !password) {
       return res.status(400).json({
         message: "All fields are required",
       });
     }
 
-    // ✅ Check email already exists
     const existingUser = await User.findOne({ where: { email } });
 
     if (existingUser) {
@@ -25,10 +23,10 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // ✅ Hash password
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // ✅ Create user
+
     const user = await User.create({
       firstName,
       lastName,
@@ -37,11 +35,10 @@ router.post("/register", async (req, res) => {
       gender,
     });
 
-    // ✅ Remove password from response
+
     const userData = user.toJSON();
     delete userData.password;
 
-    // ✅ Send response
     return res.status(201).json({
       message: "User registered successfully",
       data: userData,
@@ -82,6 +79,7 @@ router.post("/login", async (req, res) => {
         id: user.id,
         email: user.email,
         fullName: user.firstName + user.lastName,
+        role:     user.role, 
       },
       "sala-express",
     );
